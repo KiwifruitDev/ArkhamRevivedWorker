@@ -21,7 +21,7 @@
         "AccountXP": 0,
         "AccountXPForPrevUpgrade": 0,
         "AccountXPForNextUpgrade": 1000,
-        "AccountXPLevel": 24,
+        "AccountXPLevel": 30,
         "EquippedWeapon1": "Shotgun_01",
         "EquippedWeapon2": "AssaultRifle_01",
         "ForceEquipGoldenShotgun": true,
@@ -29,11 +29,11 @@
         "jokerXP": 0,
         "jokerXPForPrevUpgrade": 0,
         "jokerXPForNextUpgrade": 1000,
-        "jokerXPLevel": 24,
+        "jokerXPLevel": 30,
         "baneXP": 0,
         "baneXPForPrevUpgrade": 0,
         "baneXPForNextUpgrade": 1000,
-        "baneXPLevel": 24,
+        "baneXPLevel": 30,
         "CustomizationProfileData": {
             "CustomProfileVersion": 1,
             "CustomConfigBanks": [

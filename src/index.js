@@ -221,11 +221,13 @@ async function handlePut(request, env, url, path) {
     const uuid = profileMatch[1];
     const body = await request.text();
     if (body.length > 45e3) {
+      console.log(`Too long body sent by user ${uuid}`)
       return new Response("", { status: 204 });
     }
     if (!body.includes(
-      '"MobileUnlock_Earth2DarkKnightAlt": true,'
+      '"MobileUnlock_Earth2DarkKnightAlt":true'
     )) {
+      console.log(`Uninitialized JSON sent by user ${uuid}`)
       return new Response("", { status: 204 });
     }
     await env.PROFILES.put(uuid, body);
