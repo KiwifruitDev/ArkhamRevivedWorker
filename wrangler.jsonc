@@ -23,5 +23,7 @@
 	"assets": {
 		"directory": "./src/static/",
 		"binding": "ASSETS"
-	}
+	},
+	"workers_dev": false,
+	"preview_urls": false
 }

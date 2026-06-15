@@ -120,7 +120,7 @@ async function ticketToUUID(ticket) {
 
 async function handleGet(request, env, url, path) {
 	if (path === "" || path === "/" || path === "index.html") {
-		return new Response(await loadStatic("Hello World!"));
+		return new Response("Hello World!");
 	}
 
 	if (path === "/files/netvars.dat") {
