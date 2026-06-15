@@ -4,6 +4,7 @@
 // - /store/catalog/general -> static: catalog.json
 // - /store/offers?vendor=[0 or 4] -> static: 0 is store.json and 4 is credits.json
 // - /users/me -> get "Bearer <uuid>" in authorization header return json {"user_id": "<uuid>"}
+// - /users/me/wbnet -> static: user-wbnet.json
 // - /users/me/inventory -> static: inventory.json
 // - /users/[uuid]/profile/private -> pull save data from kv using uuid or use defaultprofile.json if it doesn't exist
 // POST:
@@ -13,7 +14,6 @@
 // PUT:
 // - /store/vouchers/[transactionid] -> unimplemented
 // - /store/purchases/[transactionid] -> unimplemented
-// - /users/me/wbnet -> static: user-wbnet.json
 // - /users/[uuid]/profile/private -> validate that body contains "\"MobileUnlock_Earth2DarkKnightAlt\": true," and is less than 45,000 characters long and if so then add to kv always return code 204
 
 var __defProp = Object.defineProperty;
@@ -140,6 +140,13 @@ async function handleGet(request, env, url, path) {
       user_id: uuid
     });
   }
+  if (path === "/users/me/wbnet") {
+    return new Response(await loadStatic(env, "user-wbnet.json"), {
+      headers: {
+        "Content-Type": "application/json"
+      }
+    });
+  }
   if (path === "/users/me/inventory") {
     return new Response(await loadStatic(env, "inventory.json"), {
       headers: { "Content-Type": "application/json" }
@@ -150,7 +157,7 @@ async function handleGet(request, env, url, path) {
     const uuid = profileMatch[1];
     let profile = await env.PROFILES.get(uuid);
     if (!profile) {
-      profile = await loadStatic(env, "defaultprofile.json");
+      profile = await loadStatic(env, "user-profile-default.json");
     }
     return new Response(profile, {
       headers: {
@@ -201,13 +208,6 @@ async function handlePut(request, env, url, path) {
   const purchaseMatch = path.match(/^\/store\/purchases\/([^/]+)$/);
   if (purchaseMatch) {
     return new Response("", { status: 501 });
-  }
-  if (path === "/users/me/wbnet") {
-    return new Response(await loadStatic(env, "user-wbnet.json"), {
-      headers: {
-        "Content-Type": "application/json"
-      }
-    });
   }
   const profileMatch = path.match(/^\/users\/([0-9a-fA-F-]+)\/profile\/private$/);
   if (profileMatch) {
