@@ -1,0 +1,27 @@
+{
+    "name": "arkhamrevivedworker",
+    "version": "0.1.0",
+    "description": "ArkhamRevivedWorker",
+    "main": "src/index.js",
+    "scripts": {
+        "deploy": "wrangler deploy",
+        "dev": "wrangler dev",
+        "start": "wrangler dev",
+        "test": "vitest"
+    },
+    "repository": {
+        "type": "git",
+        "url": "git+https://github.com/KiwifruitDev/ArkhamRevivedWorker.git"
+    },
+    "author": "KiwifruitDev",
+    "license": "MIT",
+    "bugs": {
+        "url": "https://github.com/KiwifruitDev/ArkhamRevivedWorker/issues"
+    },
+    "homepage": "https://github.com/KiwifruitDev/ArkhamRevivedWorker#readme",
+    "devDependencies": {
+        "@cloudflare/vitest-pool-workers": "^0.12.4",
+        "vitest": "~3.2.0",
+        "wrangler": "^4.100.0"
+    }
+}

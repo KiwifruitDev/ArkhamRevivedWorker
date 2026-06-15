@@ -1,0 +1,36 @@
+{
+    "total_count": 4,
+    "next_page": 2,
+    "items": [
+      {
+        "item_id": "0730309a-b639-5fc2-a208-eadfd4a9632a",
+        "price": {},
+        "vendor": 4,
+        "id": "1dada62f-76ae-54a1-9847-37f61b0c8d79",
+        "product_id": "2"
+      },
+      {
+        "item_id": "0db3f3e8-cef1-50d3-af75-818dcefb35cf",
+        "price": {},
+        "vendor": 4,
+        "id": "4947457f-6904-55bc-b742-2311203af967",
+        "product_id": "4"
+      },
+      {
+        "item_id": "77b70c38-72af-54b7-a66f-1c58cc9240d1",
+        "price": {},
+        "vendor": 4,
+        "id": "e034fada-37f3-5c9e-af7d-444709eba7ee",
+        "product_id": "1"
+      },
+      {
+        "item_id": "d796ab1e-8834-5f90-940e-d060181e4db2",
+        "price": {},
+        "vendor": 4,
+        "id": "047cca15-c7a3-5ab8-8c1e-0d3f42425fa9",
+        "product_id": "3"
+      }
+    ],
+    "page": 1,
+    "pages": 1
+}

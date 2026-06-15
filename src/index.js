@@ -1,0 +1,286 @@
+/**
+ * Welcome to Cloudflare Workers! This is your first worker.
+ *
+ * - Run `npm run dev` in your terminal to start a development server
+ * - Open a browser tab at http://localhost:8787/ to see your worker in action
+ * - Run `npm run deploy` to publish your worker
+ *
+ * Learn more at https://developers.cloudflare.com/workers/
+ */
+
+// static pages are inside static/ (ie ./static/netvars.ini)
+
+// GET:
+// - / -> "Hello World!"
+// - /files/netvars.dat -> static: netvars.ini
+// - /motd -> static: motd.json
+// - /store/catalog/general -> static: catalog.json
+// - /store/offers?vendor=[0 or 4] -> static: 0 is store.json and 4 is credits.json 
+// - /users/me -> get "Bearer <uuid>" in authorization header return json {"user_id": "<uuid>"}
+// - /users/me/inventory -> static: inventory.json
+// - /users/[uuid]/profile/private -> pull save data from kv using uuid or use defaultprofile.json if it doesn't exist
+// POST:
+// - /auth/token -> "ticket" in body (remove all underscores and dashes) turn it into a consistent uuid and return json {"token_type": "bearer","access_token": "<uuid>","expires_in": 1000000,"refresh_token": ""};
+// - /store/vouchers/transactions -> "voucher_id" in body return json {"transaction_id": "<sent voucher id>"} code 201
+// - /store/purchases/transactions -> "offer_id" in body return json {"transaction_id": "<sent offer id>"} code 201
+// PUT:
+// - /store/vouchers/[transactionid] -> unimplemented
+// - /store/purchases/[transactionid] -> unimplemented
+// - /users/me/wbnet -> static: user-wbnet.json
+// - /users/[uuid]/profile/private -> validate that body contains "\"MobileUnlock_Earth2DarkKnightAlt\": true," and is less than 45,000 characters long and if so then add to kv always return code 204
+
+export default {
+	async fetch(request, env) {
+		try {
+			const url = new URL(request.url);
+			const path = url.pathname;
+
+			switch (request.method) {
+				case "GET":
+					return handleGet(request, env, url, path);
+
+				case "POST":
+					return handlePost(request, env, url, path);
+
+				case "PUT":
+					return handlePut(request, env, url, path);
+
+				default:
+					return new Response("", { status: 405 });
+			}
+		} catch (e) {
+			console.error(e);
+			return json({ error: "internal_server_error" }, 500);
+		}
+	}
+};
+
+//
+// Helpers
+//
+
+function json(data, status = 200) {
+	return new Response(JSON.stringify(data), {
+		status,
+		headers: {
+			"Content-Type": "application/json"
+		}
+	});
+}
+
+async function loadStatic(name) {
+	const file = await fetch(new URL(`./static/${name}`, import.meta.url));
+	return file.text();
+}
+
+async function loadStaticJson(name) {
+	return JSON.parse(await loadStatic(name));
+}
+
+function getBearerUUID(request) {
+	const auth = request.headers.get("authorization") || "";
+	const match = auth.match(/^Bearer\s+(.+)$/i);
+	return match ? match[1] : null;
+}
+
+async function ticketToUUID(ticket) {
+	const normalized = ticket.replace(/[_-]/g, "");
+
+	const hash = await crypto.subtle.digest(
+		"SHA-256",
+		new TextEncoder().encode(normalized)
+	);
+
+	const bytes = Array.from(new Uint8Array(hash));
+
+	const hex = bytes
+		.slice(0, 16)
+		.map(b => b.toString(16).padStart(2, "0"))
+		.join("");
+
+	return [
+		hex.substring(0, 8),
+		hex.substring(8, 12),
+		hex.substring(12, 16),
+		hex.substring(16, 20),
+		hex.substring(20, 32)
+	].join("-");
+}
+
+//
+// GET
+//
+
+async function handleGet(request, env, url, path) {
+	if (path === "" || path === "/" || path === "index.html") {
+		return new Response(await loadStatic("Hello World!"));
+	}
+
+	if (path === "/files/netvars.dat") {
+		return new Response(await loadStatic("netvars.ini"));
+	}
+
+	if (path === "/motd") {
+		return new Response(await loadStatic("motd.json"), {
+			headers: { "Content-Type": "application/json" }
+		});
+	}
+
+	if (path === "/store/catalog/general") {
+		return new Response(await loadStatic("catalog.json"), {
+			headers: { "Content-Type": "application/json" }
+		});
+	}
+
+	if (path === "/store/offers") {
+		const vendor = url.searchParams.get("vendor");
+
+		if (vendor === "4") {
+			return new Response(await loadStatic("credits.json"), {
+				headers: { "Content-Type": "application/json" }
+			});
+		}
+
+		return new Response(await loadStatic("store.json"), {
+			headers: { "Content-Type": "application/json" }
+		});
+	}
+
+	if (path === "/users/me") {
+		const uuid = getBearerUUID(request);
+
+		if (!uuid) {
+			return json({ error: "unauthorized" }, 401);
+		}
+
+		return json({
+			user_id: uuid
+		});
+	}
+
+	if (path === "/users/me/inventory") {
+		return new Response(await loadStatic("inventory.json"), {
+			headers: { "Content-Type": "application/json" }
+		});
+	}
+
+	const profileMatch =
+		path.match(/^\/users\/([0-9a-fA-F-]+)\/profile\/private$/);
+
+	if (profileMatch) {
+		const uuid = profileMatch[1];
+
+		let profile = await env.PROFILES.get(uuid);
+
+		if (!profile) {
+			profile = await loadStatic("defaultprofile.json");
+		}
+
+		return new Response(profile, {
+			headers: {
+				"Content-Type": "application/json"
+			}
+		});
+	}
+
+	return new Response("", { status: 404 });
+}
+
+//
+// POST
+//
+
+async function handlePost(request, env, url, path) {
+	if (path === "/auth/token") {
+		const body = await request.json();
+
+		const uuid = await ticketToUUID(body.ticket || "");
+
+		return json({
+			token_type: "bearer",
+			access_token: uuid,
+			expires_in: 1000000,
+			refresh_token: ""
+		});
+	}
+
+	if (path === "/store/vouchers/transactions") {
+		const body = await request.json();
+
+		return json(
+			{
+				transaction_id: body.voucher_id
+			},
+			201
+		);
+	}
+
+	if (path === "/store/purchases/transactions") {
+		const body = await request.json();
+
+		return json(
+			{
+				transaction_id: body.offer_id
+			},
+			201
+		);
+	}
+
+	return new Response("", { status: 404 });
+}
+
+//
+// PUT
+//
+
+async function handlePut(request, env, url, path) {
+	const voucherMatch =
+		path.match(/^\/store\/vouchers\/([^/]+)$/);
+
+	if (voucherMatch) {
+		return new Response("", { status: 501 });
+	}
+
+	const purchaseMatch =
+		path.match(/^\/store\/purchases\/([^/]+)$/);
+
+	if (purchaseMatch) {
+		return new Response("", { status: 501 });
+	}
+
+	if (path === "/users/me/wbnet") {
+		return new Response(await loadStatic("user-wbnet.json"), {
+			headers: {
+				"Content-Type": "application/json"
+			}
+		});
+	}
+
+	const profileMatch =
+		path.match(/^\/users\/([0-9a-fA-F-]+)\/profile\/private$/);
+
+	if (profileMatch) {
+		const uuid = profileMatch[1];
+		const body = await request.text();
+
+		if (body.length > 45000) {
+			return new Response("", { status: 204 });
+		}
+
+		if (
+			!body.includes(
+				'"MobileUnlock_Earth2DarkKnightAlt": true,'
+			)
+		) {
+			return new Response("", { status: 204 });
+		}
+
+		await env.PROFILES.put(uuid, body);
+
+		return new Response("", {
+			status: 204
+		});
+	}
+
+	return new Response("", { status: 404 });
+}
