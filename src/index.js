@@ -1,3 +1,21 @@
+// GET:
+// - /files/netvars.dat -> static: netvars.ini
+// - /motd -> static: motd.json
+// - /store/catalog/general -> static: catalog.json
+// - /store/offers?vendor=[0 or 4] -> static: 0 is store.json and 4 is credits.json
+// - /users/me -> get "Bearer <uuid>" in authorization header return json {"user_id": "<uuid>"}
+// - /users/me/inventory -> static: inventory.json
+// - /users/[uuid]/profile/private -> pull save data from kv using uuid or use defaultprofile.json if it doesn't exist
+// POST:
+// - /auth/token -> "ticket" in body (remove all underscores and dashes) turn it into a consistent uuid and return json {"token_type": "bearer","access_token": "<uuid>","expires_in": 1000000,"refresh_token": ""};
+// - /store/vouchers/transactions -> "voucher_id" in body return json {"transaction_id": "<sent voucher id>"} code 201
+// - /store/purchases/transactions -> "offer_id" in body return json {"transaction_id": "<sent offer id>"} code 201
+// PUT:
+// - /store/vouchers/[transactionid] -> unimplemented
+// - /store/purchases/[transactionid] -> unimplemented
+// - /users/me/wbnet -> static: user-wbnet.json
+// - /users/[uuid]/profile/private -> validate that body contains "\"MobileUnlock_Earth2DarkKnightAlt\": true," and is less than 45,000 characters long and if so then add to kv always return code 204
+
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -33,8 +51,6 @@ function json(data, status = 200) {
 }
 __name(json, "json");
 async function loadStatic(env, filename) {
-  console.log(env)
-  console.log(env.ASSETS)
   const response = await env.ASSETS.fetch(
     `https://assets.local/${filename}`
   );
@@ -50,6 +66,26 @@ function getBearerUUID(request) {
   return match ? match[1] : null;
 }
 __name(getBearerUUID, "getBearerUUID");
+async function parseRequestBody(request) {
+  const contentType = (request.headers.get("content-type") || "").toLowerCase();
+  if (contentType.includes("application/json")) {
+    return request.json();
+  }
+  if (contentType.includes("application/x-www-form-urlencoded")) {
+    const text = await request.text();
+    return Object.fromEntries(new URLSearchParams(text));
+  }
+  if (contentType.includes("multipart/form-data")) {
+    const formData = await request.formData();
+    const result = {};
+    for (const [key, value] of formData.entries()) {
+      result[key] = value;
+    }
+    return result;
+  }
+  return {};
+}
+__name(parseRequestBody, "parseRequestBody");
 async function ticketToUUID(ticket) {
   const normalized = ticket.replace(/[_-]/g, "");
   const hash = await crypto.subtle.digest(
@@ -127,7 +163,7 @@ async function handleGet(request, env, url, path) {
 __name(handleGet, "handleGet");
 async function handlePost(request, env, url, path) {
   if (path === "/auth/token") {
-    const body = await request.json();
+    const body = await parseRequestBody(request);
     const uuid = await ticketToUUID(body.ticket || "");
     return json({
       token_type: "bearer",
@@ -137,7 +173,7 @@ async function handlePost(request, env, url, path) {
     });
   }
   if (path === "/store/vouchers/transactions") {
-    const body = await request.json();
+    const body = await parseRequestBody(request);
     return json(
       {
         transaction_id: body.voucher_id
@@ -146,7 +182,7 @@ async function handlePost(request, env, url, path) {
     );
   }
   if (path === "/store/purchases/transactions") {
-    const body = await request.json();
+    const body = await parseRequestBody(request);
     return json(
       {
         transaction_id: body.offer_id
