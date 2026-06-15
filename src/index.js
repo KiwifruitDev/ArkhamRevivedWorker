@@ -109,7 +109,9 @@ async function handleGet(request, env, url, path) {
     return new Response("Hello World!");
   }
   if (path === "/files/netvars.dat") {
-    return new Response(await loadStatic(env, "netvars.ini"));
+    const content = await loadStatic(env, "netvars.ini");
+    const base64 = btoa(content);
+    return json({ data: base64 });
   }
   if (path === "/motd") {
     return new Response(await loadStatic(env, "motd.json"), {
