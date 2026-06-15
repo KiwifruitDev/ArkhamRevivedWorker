@@ -19,5 +19,9 @@
 			"binding": "PROFILES",
 			"id": "c36e3216db40432e9c35c16123f6d09a"
 		}
-  	]
+  	],
+	"assets": {
+		"directory": "./src/static/",
+		"binding": "ASSETS"
+	}
 }

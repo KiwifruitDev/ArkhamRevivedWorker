@@ -68,9 +68,16 @@ function json(data, status = 200) {
 	});
 }
 
-async function loadStatic(name) {
-	const file = await fetch(new URL(`./static/${name}`, import.meta.url));
-	return file.text();
+async function loadStatic(env, filename) {
+    const response = await env.ASSETS.fetch(
+        `https://assets.local/${filename}`
+    );
+
+    if (!response.ok) {
+        throw new Error(`Missing asset: ${filename}`);
+    }
+
+    return response.text();
 }
 
 async function loadStaticJson(name) {
