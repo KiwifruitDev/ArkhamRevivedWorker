@@ -21,9 +21,16 @@
 		}
   	],
 	"assets": {
-		"directory": "./src/static/",
-		"binding": "ASSETS"
+		"directory": "./public/",
+		"binding": "ASSETS",
+    	"run_worker_first": true
 	},
 	"workers_dev": false,
-	"preview_urls": false
+	"preview_urls": false,
+	"routes": [
+		{
+			"pattern": "arkhamrevived.kiwifruitdev.com/*",
+			"zone_name": "kiwifruitdev.com"
+		}
+    ]
 }

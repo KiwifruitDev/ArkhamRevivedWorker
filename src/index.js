@@ -8,8 +8,6 @@
  * Learn more at https://developers.cloudflare.com/workers/
  */
 
-// static pages are inside static/ (ie ./static/netvars.ini)
-
 // GET:
 // - / -> "Hello World!"
 // - /files/netvars.dat -> static: netvars.ini
