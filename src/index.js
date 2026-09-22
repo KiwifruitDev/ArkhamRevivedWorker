@@ -1279,13 +1279,13 @@ async function handleGet(request, env, url, path) {
       headers: { "Content-Type": "application/json" }
     });
   }
-  const wbnetMatch = path.match(/^\/users\/.*\/wbnet$/);
+  const wbnetMatch = path.match(/^\/users\/(.*)\/wbnet$/);
   if (wbnetMatch) {
     return new Response(await loadStatic(env, "user-wbnet.json"), {
       headers: { "Content-Type": "application/json" }
     });
   }
-  const profileMatch = path.match(/^\/users\/.*\/profile\/private$/);
+  const profileMatch = path.match(/^\/users\/(.*)\/profile\/private$/);
   if (profileMatch) {
     const uuid = profileMatch[1];
     let profile = await env.PROFILES.get(uuid);
@@ -1349,7 +1349,7 @@ async function handlePut(request, env, url, path) {
       }
     });
   }
-  const profileMatch = path.match(/^\/users\/.*\/profile\/private$/);
+  const profileMatch = path.match(/^\/users\/(.*)\/profile\/private$/);
   if (profileMatch) {
     const uuid = profileMatch[1];
     const body = await request.text();
