@@ -1303,8 +1303,12 @@ async function handleGet(request, env, url, path) {
 __name(handleGet, "handleGet");
 async function handlePost(request, env, url, path) {
   if (path === "/auth/token") {
-    const body = await parseRequestBody(request);
-    const uuid = body.ticket; //await ticketToUUID(body.ticket || "");
+    const authorization = request.headers.get("Authorization") || "";
+    if (!authorization.startsWith("Basic ")) {
+      return json({ error: "unauthorized" }, 401);
+    }
+    const decoded = atob(authorization.slice(6).trim());
+    const uuid = decoded.split(":", 1)[0];
     return json({
       token_type: "bearer",
       access_token: uuid,
