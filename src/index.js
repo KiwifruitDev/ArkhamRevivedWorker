@@ -1304,7 +1304,7 @@ __name(handleGet, "handleGet");
 async function handlePost(request, env, url, path) {
   if (path === "/auth/token") {
     const body = await parseRequestBody(request);
-    const uuid = await ticketToUUID(body.ticket || "");
+    const uuid = body.ticket; //await ticketToUUID(body.ticket || "");
     return json({
       token_type: "bearer",
       access_token: uuid,
