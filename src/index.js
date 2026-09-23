@@ -1437,12 +1437,12 @@ async function handlePost(request, env, url, path) {
       if (sourceUuid.length > 64) {
         return json({ error: "invalid_request6" }, 400);
       }
-    } else if (grantType === "http://ns.fireteam.net/oauth2/grant-type/xbox") {
+    } else {
+      // assuming xbox?
       // xbox is not yet implemented so it outputs a 0 uuid
       platform = "xbox";
       sourceUuid = "00000000-0000-0000-0000-000000000000";
-    } else {
-      return json({ error: "unsupported_grant_type" }, 400);
+      console.log(`xbox user? ${body.ticket ? body.ticket : "no ticket"}`)
     }
 
     const uuid = platform + "_" + sourceUuid + "_" + (await hashUuid(sourceUuid, env.UUID_HASH));
