@@ -1374,7 +1374,7 @@ async function handlePost(request, env, url, path) {
       // turn that PSN name into a uuid
       platform = "ps3";
       if (typeof body.ticket !== "string" || !body.ticket) {
-        return json({ error: "invalid_request" }, 400);
+        return json({ error: "invalid_request1" }, 400);
       }
 
       let ticket;
@@ -1386,13 +1386,13 @@ async function handlePost(request, env, url, path) {
           char => char.charCodeAt(0)
         );
       } catch {
-        return json({ error: "invalid_request" }, 400);
+        return json({ error: "invalid_request2" }, 400);
       }
 
       const usernameOffset = 0x54;
 
       if (ticket.length <= usernameOffset) {
-        return json({ error: "invalid_request" }, 400);
+        return json({ error: "invalid_request3" }, 400);
       }
 
       const end = ticket.indexOf(0, usernameOffset);
@@ -1403,7 +1403,7 @@ async function handlePost(request, env, url, path) {
       );
 
       if (usernameBytes.length === 0) {
-        return json({ error: "invalid_request" }, 400);
+        return json({ error: "invalid_request4" }, 400);
       }
 
       try {
@@ -1411,11 +1411,11 @@ async function handlePost(request, env, url, path) {
           fatal: true
         }).decode(usernameBytes);
       } catch {
-        return json({ error: "invalid_request" }, 400);
+        return json({ error: "invalid_request5" }, 400);
       }
 
       if (sourceUuid.length > 64) {
-        return json({ error: "invalid_request" }, 400);
+        return json({ error: "invalid_request6" }, 400);
       }
     } else if (grantType === "http://ns.fireteam.net/oauth2/grant-type/xbox") {
       // xbox is not yet implemented so it outputs a 0 uuid
