@@ -1378,20 +1378,35 @@ async function handlePost(request, env, url, path) {
       }
 
       let ticket;
+      let binary;
 
       try {
-        let encoded = body.ticket;
-        encoded = encoded.replace(/-/g, "+").replace(/_/g, "/");
-        while (encoded.length % 4 !== 0) {
-          encoded += "=";
-        }
-        const binary = atob(encoded);
+        let encoded = body.ticket
+          .replace(/-/g, "+")
+          .replace(/_/g, "/");
+
+        encoded += "=".repeat((4 - encoded.length % 4) % 4);
+
+        binary = atob(encoded);
+      } catch (err) {
+        return json({
+          error: "base64_decode_failed",
+          message: err instanceof Error ? err.message : String(err),
+          name: err instanceof Error ? err.name : typeof err
+        }, 400);
+      }
+
+      try {
         ticket = Uint8Array.from(
           binary,
           char => char.charCodeAt(0)
         );
-      } catch {
-        return json({ error: "invalid_request2" }, 400);
+      } catch (err) {
+        return json({
+          error: "binary_conversion_failed",
+          message: err instanceof Error ? err.message : String(err),
+          name: err instanceof Error ? err.name : typeof err
+        }, 400);
       }
 
       const usernameOffset = 0x54;
