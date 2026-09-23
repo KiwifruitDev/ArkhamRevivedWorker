@@ -1380,7 +1380,12 @@ async function handlePost(request, env, url, path) {
       let ticket;
 
       try {
-        const binary = atob(body.ticket);
+        let encoded = body.ticket;
+        encoded = encoded.replace(/-/g, "+").replace(/_/g, "/");
+        while (encoded.length % 4 !== 0) {
+          encoded += "=";
+        }
+        const binary = atob(encoded);
         ticket = Uint8Array.from(
           binary,
           char => char.charCodeAt(0)
