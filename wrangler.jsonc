@@ -16,10 +16,15 @@
 	],
 	"kv_namespaces": [
 		{
+		"binding": "INVENTORIES",
+		"id": "c1e5d171550d46299f8eaa7a38200e30"
+		},
+		{
 			"binding": "PROFILES",
 			"id": "c36e3216db40432e9c35c16123f6d09a"
 		}
   	],
+	
 	"assets": {
 		"directory": "./public/",
 		"binding": "ASSETS",
