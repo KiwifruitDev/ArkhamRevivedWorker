@@ -1218,26 +1218,53 @@ async function parseRequestBody(request) {
   return {};
 }
 __name(parseRequestBody, "parseRequestBody");
-async function ticketToUUID(ticket) {
-  const normalized = ticket.replace(/[_-]/g, "");
-  const hash = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(normalized)
+async function hashUuid(value, secret) {
+  if (!secret) {
+    throw new Error("Missing UUID_HASH secret");
+  }
+
+  const encoder = new TextEncoder();
+
+  const key = await crypto.subtle.importKey(
+    "raw",
+    encoder.encode(secret),
+    {
+      name: "HMAC",
+      hash: "SHA-256"
+    },
+    false,
+    ["sign"]
   );
-  const bytes = Array.from(new Uint8Array(hash));
-  const hex = bytes.slice(0, 16).map((b) => b.toString(16).padStart(2, "0")).join("");
+
+  const digest = new Uint8Array(
+    await crypto.subtle.sign(
+      "HMAC",
+      key,
+      encoder.encode(value)
+    )
+  );
+
+  digest[6] = (digest[6] & 0x0f) | 0x40;
+  digest[8] = (digest[8] & 0x3f) | 0x80;
+
+  const hex = Array.from(
+    digest.slice(0, 16),
+    byte => byte.toString(16).padStart(2, "0")
+  ).join("");
+
   return [
-    hex.substring(0, 8),
-    hex.substring(8, 12),
-    hex.substring(12, 16),
-    hex.substring(16, 20),
-    hex.substring(20, 32)
+    hex.slice(0, 8),
+    hex.slice(8, 12),
+    hex.slice(12, 16),
+    hex.slice(16, 20),
+    hex.slice(20, 32)
   ].join("-");
 }
-__name(ticketToUUID, "ticketToUUID");
+__name(hashUuid, "hashUuid");
 async function handleGet(request, env, url, path) {
   if (path === "" || path === "/" || path === "index.html") {
-    return new Response("Hello World!");
+    // for users going to this domain
+    return Response.redirect("https://kiwifruitdev.com/arkhamrevived/", 301);
   }
   if (path === "/files/netvars.dat") {
     const content = await loadStatic(env, "netvars.ini");
@@ -1266,6 +1293,7 @@ async function handleGet(request, env, url, path) {
     });
   }
   if (path === "/users/me") {
+    // just returning the token because the token we provided was our uuid
     const uuid = getBearerUUID(request);
     if (!uuid) {
       return json({ error: "unauthorized" }, 401);
@@ -1279,13 +1307,13 @@ async function handleGet(request, env, url, path) {
       headers: { "Content-Type": "application/json" }
     });
   }
-  const wbnetMatch = path.match(/^\/users\/(.*)\/wbnet$/);
+  const wbnetMatch = path.match(/^\/users\/([0-9a-fA-F-]+)\/wbnet$/);
   if (wbnetMatch) {
     return new Response(await loadStatic(env, "user-wbnet.json"), {
       headers: { "Content-Type": "application/json" }
     });
   }
-  const profileMatch = path.match(/^\/users\/(.*)\/profile\/private$/);
+  const profileMatch = path.match(/^\/users\/([0-9a-fA-F-]+)\/profile\/private$/);
   if (profileMatch) {
     const uuid = profileMatch[1];
     let profile = await env.PROFILES.get(uuid);
@@ -1303,12 +1331,102 @@ async function handleGet(request, env, url, path) {
 __name(handleGet, "handleGet");
 async function handlePost(request, env, url, path) {
   if (path === "/auth/token") {
-    const authorization = request.headers.get("Authorization") || "";
-    if (!authorization.startsWith("Basic ")) {
-      return json({ error: "unauthorized" }, 401);
+    // all uuids go through a hash (cloudflare worker secret runtime variable named UUID_HASH)
+    // all uuids will be repeatable (not random-based at all)
+    const body = await parseRequestBody(request);
+    const grantType = body.grant_type || "";
+    let sourceUuid;
+    let platform;
+    if (grantType === "http://ns.fireteam.net/oauth2/grant-type/steam/encrypted_app_ticket") {
+      // on pc (Form item: "grant_type" = "http://ns.fireteam.net/oauth2/grant-type/steam/encrypted_app_ticket")
+      // the HTTP Authorization header is set to Basic MDkzOGFhN2EtNjY4Mi00YjkwLWE5N2QtOTBiZWNiZGRiOWNlOkdYbk5RYVJTdXhheGxtNnVSMzVIVmszOXU=
+      // that base64 string is converted to 0938aa7a-6682-4b90-a97d-90becbddb9ce:GXnNQaRSuxaxlm6uR35HVk39u
+      // 0938aa7a-6682-4b90-a97d-90becbddb9ce is our uuid
+      platform = "pc";
+      const authorization = request.headers.get("authorization") || "";
+      const match = authorization.match(/^Basic\s+(.+)$/i);
+
+      if (!match) {
+        return json({ error: "invalid_client" }, 401);
+      }
+
+      let decoded;
+      try {
+        decoded = atob(match[1]);
+      } catch {
+        return json({ error: "invalid_client" }, 401);
+      }
+
+      const separator = decoded.indexOf(":");
+      if (separator <= 0) {
+        return json({ error: "invalid_client" }, 401);
+      }
+
+      sourceUuid = decoded.slice(0, separator);
+
+      if (!/^[0-9a-fA-F-]{36}$/.test(sourceUuid)) {
+        return json({ error: "invalid_client" }, 401);
+      }
+    } else if (grantType === "http://ns.fireteam.net/oauth2/grant-type/psn") {
+      // on ps3 (Form item: "grant_type" = "http://ns.fireteam.net/oauth2/grant-type/psn")
+      // get ticket (Form item: "ticket" = "IQEAAAAAAPAwAACkAAgAFIw7vuxB8ZaDzw4H3hdHbsSdkVyqAAEABAAAAQAABwAIAAABoM8hPf4ABwAIAAABoNRHmGgAAgAIdRM3K2UaDNMABAAgS2l3aWZydWl0RGV2AAAAAAAAAAAAAAAAAAAAAAAAAAAACAAEdXMAAQAEAARiNwAAAAgAGFVQMTAxOC1CTFVTMzExNDdfMDAAAA)
+      // that base64 decodes into a binary, at offset 3F is the PSN username until a null byte (00)
+      // turn that PSN name into a uuid
+      platform = "ps3";
+      if (typeof body.ticket !== "string" || !body.ticket) {
+        return json({ error: "invalid_request" }, 400);
+      }
+
+      let ticket;
+
+      try {
+        const binary = atob(body.ticket);
+        ticket = Uint8Array.from(
+          binary,
+          char => char.charCodeAt(0)
+        );
+      } catch {
+        return json({ error: "invalid_request" }, 400);
+      }
+
+      const usernameOffset = 0x54;
+
+      if (ticket.length <= usernameOffset) {
+        return json({ error: "invalid_request" }, 400);
+      }
+
+      const end = ticket.indexOf(0, usernameOffset);
+
+      const usernameBytes = ticket.slice(
+        usernameOffset,
+        end === -1 ? ticket.length : end
+      );
+
+      if (usernameBytes.length === 0) {
+        return json({ error: "invalid_request" }, 400);
+      }
+
+      try {
+        sourceUuid = new TextDecoder("utf-8", {
+          fatal: true
+        }).decode(usernameBytes);
+      } catch {
+        return json({ error: "invalid_request" }, 400);
+      }
+
+      if (sourceUuid.length > 64) {
+        return json({ error: "invalid_request" }, 400);
+      }
+    } else if (grantType === "http://ns.fireteam.net/oauth2/grant-type/xbox") {
+      // xbox is not yet implemented so it outputs a 0 uuid
+      platform = "xbox";
+      sourceUuid = "00000000-0000-0000-0000-000000000000";
+    } else {
+      return json({ error: "unsupported_grant_type" }, 400);
     }
-    const decoded = atob(authorization.slice(6).trim());
-    const uuid = decoded.split(":", 1)[0];
+
+    const uuid = platform + "_" + sourceUuid + "_" + (await hashUuid(sourceUuid, env.UUID_HASH));
+
     return json({
       token_type: "bearer",
       access_token: uuid,
@@ -1353,7 +1471,7 @@ async function handlePut(request, env, url, path) {
       }
     });
   }
-  const profileMatch = path.match(/^\/users\/(.*)\/profile\/private$/);
+  const profileMatch = path.match(/^\/users\/([0-9a-fA-F-]+)\/profile\/private$/);
   if (profileMatch) {
     const uuid = profileMatch[1];
     const body = await request.text();
