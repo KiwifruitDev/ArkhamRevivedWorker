@@ -1,22 +1,3 @@
-// GET:
-// - /files/netvars.dat -> static: netvars.ini
-// - /motd -> static: motd.json
-// - /store/catalog/general -> static: catalog.json
-// - /store/offers?vendor=[0 or 4] -> static: 0 is store.json and 4 is credits.json
-// - /users/me -> get "Bearer <uuid>" in authorization header return json {"user_id": "<uuid>"}
-// - /users/me/inventory -> static: inventory.json
-// - /users/[uuid]/wbnet -> static: user-wbnet.json
-// - /users/[uuid]/profile/private -> pull save data from kv using uuid or use defaultprofile.json if it doesn't exist
-// POST:
-// - /auth/token -> "ticket" in body (remove all underscores and dashes) turn it into a consistent uuid and return json {"token_type": "bearer","access_token": "<uuid>","expires_in": 1000000,"refresh_token": ""};
-// - /store/vouchers/transactions -> "voucher_id" in body return json {"transaction_id": "<sent voucher id>"} code 201
-// - /store/purchases/transactions -> "offer_id" in body return json {"transaction_id": "<sent offer id>"} code 201
-// PUT:
-// - /store/vouchers/[transactionid] -> unimplemented
-// - /store/purchases/[transactionid] -> unimplemented
-// - /users/me/wbnet -> static: user-wbnet.json
-// - /users/[uuid]/profile/private -> validate that body contains "\"MobileUnlock_Earth2DarkKnightAlt\": true," and is less than 45,000 characters long and if so then add to kv always return code 204
-
 var __defProp = Object.defineProperty;
 var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
@@ -1544,7 +1525,7 @@ async function handleGet(request, env, url, path) {
     const uuid = profileMatch[1];
     let profile = await env.PROFILES.get(uuid);
     if (!profile) {
-      profile = JSON.stringify(defaultProfile); //await loadStatic(env, "user-profile-default.json");
+      profile = JSON.stringify(defaultProfile);
     }
     return new Response(profile, {
       headers: {
@@ -1712,7 +1693,7 @@ async function handlePost(request, env, url, path) {
         arbitration: "4",
         arbitrate: "5",
       },
-      200
+      201
     );
   }
   return new Response("", { status: 404 });
@@ -1738,14 +1719,14 @@ async function handlePut(request, env, url, path) {
   if (profileMatch) {
     const uuid = profileMatch[1];
     const body = await request.text();
+
     if (body.length > 45e3) {
-      console.log(`Too long body sent by user ${uuid}`)
+      console.log(`Too long body sent by user ${uuid}`);
       return new Response("", { status: 204 });
     }
-    if (!body.includes(
-      '"MobileUnlock_Earth2DarkKnightAlt"'
-    )) {
-      console.log(`Uninitialized JSON sent by user ${uuid}`)
+
+    if (!body.includes('"MobileUnlock_Earth2DarkKnightAlt"')) {
+      console.log(`Uninitialized JSON sent by user ${uuid}`);
       return new Response("", { status: 204 });
     }
     await env.PROFILES.put(uuid, body);
