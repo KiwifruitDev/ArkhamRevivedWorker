@@ -1353,7 +1353,7 @@ const defaultProfile = {
 
 // src/index.js
 var index_default = {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     try {
       const url = new URL(request.url);
       const path = url.pathname;
@@ -1361,9 +1361,9 @@ var index_default = {
         case "GET":
           return handleGet(request, env, url, path);
         case "POST":
-          return handlePost(request, env, url, path);
+          return handlePost(request, env, url, path, ctx);
         case "PUT":
-          return handlePut(request, env, url, path);
+          return handlePut(request, env, url, path, ctx);
         default:
           return new Response("", { status: 405 });
       }
@@ -1461,6 +1461,115 @@ async function hashUuid(value, secret) {
   ].join("-");
 }
 __name(hashUuid, "hashUuid");
+const profileDiffIgnoredKeys = /* @__PURE__ */ new Set([
+  "LastModified",
+  "CustomizationProfileData",
+  "RecentUnlocks",
+  "LoadoutData",
+  "WeaponScores",
+  "MatchmakingData"
+]);
+function isPlainObject(value) {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+__name(isPlainObject, "isPlainObject");
+function collectProfileChanges(before, after, limit = 40) {
+  const changes = [];
+  const walk = (beforeValue, afterValue, path) => {
+    if (changes.length >= limit) return;
+    if (isPlainObject(beforeValue) && isPlainObject(afterValue)) {
+      const keys = /* @__PURE__ */ new Set([...Object.keys(beforeValue), ...Object.keys(afterValue)]);
+      for (const key of keys) {
+        if (profileDiffIgnoredKeys.has(key)) continue;
+        walk(beforeValue[key], afterValue[key], path ? `${path}.${key}` : key);
+        if (changes.length >= limit) return;
+      }
+      return;
+    }
+    if (Array.isArray(beforeValue) || Array.isArray(afterValue)) return;
+    if (beforeValue === afterValue) return;
+    if (beforeValue !== null && typeof beforeValue === "object") return;
+    if (afterValue !== null && typeof afterValue === "object") return;
+    changes.push({
+      path,
+      before: beforeValue === void 0 ? null : beforeValue,
+      after: afterValue === void 0 ? null : afterValue
+    });
+  };
+  walk(before, after, "");
+  return changes;
+}
+__name(collectProfileChanges, "collectProfileChanges");
+function parseProfileUuid(uuid) {
+  const match = /^(ps3|pc|xbox)_(.+)_([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(uuid || "");
+  if (!match) return { platform: null, username: null };
+  return { platform: match[1].toLowerCase(), username: match[2] };
+}
+__name(parseProfileUuid, "parseProfileUuid");
+function sendWebhook(env, ctx, payload) {
+  if (!env.WEBHOOK_URL) return;
+  const request = fetch(env.WEBHOOK_URL, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      ...env.WEBHOOK_SECRET ? { "x-webhook-secret": env.WEBHOOK_SECRET } : {}
+    },
+    body: JSON.stringify({
+      ...payload,
+      timestamp: payload.timestamp || (/* @__PURE__ */ new Date()).toISOString()
+    })
+  }).then(async (response) => {
+    if (!response.ok) {
+      const text = await response.text().catch(() => "");
+      console.error(`Webhook ${payload.type} rejected with ${response.status} ${text}`);
+    }
+  }).catch((error) => {
+    console.error(`Webhook ${payload.type} failed: ${error instanceof Error ? error.message : String(error)}`);
+  });
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(request);
+  }
+  return request;
+}
+__name(sendWebhook, "sendWebhook");
+async function parseJsonOrNull(text) {
+  if (!text) return null;
+  try {
+    return JSON.parse(text);
+  } catch {
+    return null;
+  }
+}
+__name(parseJsonOrNull, "parseJsonOrNull");
+function queueProfileUpdateWebhook(env, ctx, uuid, previousBody, body) {
+  const parsed = parseProfileUuid(uuid);
+  if (parsed.platform !== "ps3" || !parsed.username || !env.WEBHOOK_URL) return;
+  const task = Promise.resolve().then(async () => {
+    const before = await parseJsonOrNull(previousBody);
+    const after = await parseJsonOrNull(body);
+    if (!after) {
+      console.error(`Profile for ${parsed.username} was not valid JSON`);
+      return;
+    }
+    if (!before) {
+      return;
+    }
+    const changes = collectProfileChanges(before, after);
+    if (changes.length === 0) return;
+    await sendWebhook(env, ctx, {
+      type: "profile_update",
+      platform: parsed.platform,
+      username: parsed.username,
+      uuid,
+      changes
+    });
+  });
+  if (ctx && typeof ctx.waitUntil === "function") {
+    ctx.waitUntil(task);
+  }
+  return task;
+}
+__name(queueProfileUpdateWebhook, "queueProfileUpdateWebhook");
 async function handleGet(request, env, url, path) {
   if (path === "" || path === "/" || path === "index.html") {
     // for users going to this domain
@@ -1536,7 +1645,7 @@ async function handleGet(request, env, url, path) {
   return new Response("", { status: 404 });
 }
 __name(handleGet, "handleGet");
-async function handlePost(request, env, url, path) {
+async function handlePost(request, env, url, path, ctx) {
   if (path === "/auth/token") {
     // all uuids go through a hash (cloudflare worker secret runtime variable named UUID_HASH)
     // all uuids will be repeatable (not random-based at all)
@@ -1655,6 +1764,15 @@ async function handlePost(request, env, url, path) {
 
     const uuid = platform + "_" + sourceUuid + "_" + (await hashUuid(sourceUuid, env.UUID_HASH));
 
+    if (platform === "ps3") {
+      sendWebhook(env, ctx, {
+        type: "player_login",
+        platform,
+        username: sourceUuid,
+        uuid
+      });
+    }
+
     return json({
       token_type: "bearer",
       access_token: uuid,
@@ -1699,7 +1817,7 @@ async function handlePost(request, env, url, path) {
   return new Response("", { status: 404 });
 }
 __name(handlePost, "handlePost");
-async function handlePut(request, env, url, path) {
+async function handlePut(request, env, url, path, ctx) {
   const voucherMatch = path.match(/^\/store\/vouchers\/([^/]+)$/);
   if (voucherMatch) {
     return new Response("", { status: 501 });
@@ -1729,7 +1847,9 @@ async function handlePut(request, env, url, path) {
       console.log(`Uninitialized JSON sent by user ${uuid}`);
       return new Response("", { status: 204 });
     }
+    const previousBody = await env.PROFILES.get(uuid);
     await env.PROFILES.put(uuid, body);
+    queueProfileUpdateWebhook(env, ctx, uuid, previousBody, body);
     return new Response("", {
       status: 204
     });

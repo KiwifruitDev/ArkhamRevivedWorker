@@ -37,5 +37,8 @@
 			"pattern": "arkhamrevived.kiwifruitdev.com/*",
 			"zone_name": "kiwifruitdev.com"
 		}
-    ]
+    ],
+	"vars": {
+		"WEBHOOK_URL": "http://jellyfin.kiwifruitdev.com:4321/webhook"
+	}
 }
