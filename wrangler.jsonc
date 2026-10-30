@@ -39,6 +39,6 @@
 		}
     ],
 	"vars": {
-		"WEBHOOK_URL": "http://jellyfin.kiwifruitdev.com:4321/webhook"
+		"WEBHOOK_URL": "http://jellyfin.kiwifruitdev.com:4322/webhook"
 	}
 }
