@@ -1538,39 +1538,52 @@ function sendWebhook(env, ctx, payload) {
     changeCount: Array.isArray(payload.changes) ? payload.changes.length : undefined,
     webhookHost
   });
-  const request = fetch(env.WEBHOOK_URL, {
-    method: "POST",
-    headers: {
-      "content-type": "application/json",
-      ...env.WEBHOOK_SECRET ? { "x-webhook-secret": env.WEBHOOK_SECRET } : {}
-    },
-    body: JSON.stringify({
-      ...payload,
-      timestamp: payload.timestamp || (/* @__PURE__ */ new Date()).toISOString()
-    })
-  }).then(async (response) => {
-    if (!response.ok) {
-      const text = await response.text().catch(() => "");
-      logEvent("error", "Discord bridge webhook rejected", {
-        type: payload.type,
-        username: payload.username,
-        status: response.status,
-        response: text.slice(0, 500)
-      });
-    } else {
-      logEvent("info", "Discord bridge webhook delivered", {
-        type: payload.type,
-        username: payload.username,
-        status: response.status
-      });
-    }
-  }).catch((error) => {
-    logEvent("error", "Discord bridge webhook request failed", {
-      type: payload.type,
-      username: payload.username,
-      error: error instanceof Error ? error.message : String(error)
-    });
+  const body = JSON.stringify({
+    ...payload,
+    timestamp: payload.timestamp || (/* @__PURE__ */ new Date()).toISOString()
   });
+  const request = (async () => {
+    for (let attempt = 1; attempt <= 4; attempt++) {
+      try {
+        const response = await fetch(env.WEBHOOK_URL, {
+          method: "POST",
+          headers: {
+            "content-type": "application/json",
+            ...env.WEBHOOK_SECRET ? { "x-webhook-secret": env.WEBHOOK_SECRET } : {}
+          },
+          body
+        });
+        if (response.ok) {
+          logEvent("info", "Discord bridge webhook delivered", {
+            type: payload.type,
+            username: payload.username,
+            status: response.status,
+            attempt
+          });
+          return;
+        }
+        const text = await response.text().catch(() => "");
+        const transient = response.status >= 500 || response.status === 429;
+        logEvent(transient && attempt < 4 ? "warn" : "error", "Discord bridge webhook rejected", {
+          type: payload.type,
+          username: payload.username,
+          status: response.status,
+          attempt,
+          response: text.slice(0, 500)
+        });
+        if (!transient || attempt === 4) return;
+      } catch (error) {
+        logEvent(attempt < 4 ? "warn" : "error", "Discord bridge webhook request failed", {
+          type: payload.type,
+          username: payload.username,
+          attempt,
+          error: error instanceof Error ? error.message : String(error)
+        });
+        if (attempt === 4) return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, attempt * 500));
+    }
+  })();
   if (ctx && typeof ctx.waitUntil === "function") {
     ctx.waitUntil(request);
   }
