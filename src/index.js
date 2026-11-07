@@ -1506,8 +1506,38 @@ function parseProfileUuid(uuid) {
   return { platform: match[1].toLowerCase(), username: match[2] };
 }
 __name(parseProfileUuid, "parseProfileUuid");
+function logEvent(level, message, details = {}) {
+  const cleanDetails = Object.fromEntries(
+  	Object.entries(details).filter(([, value]) => value !== undefined && value !== null)
+  );
+  const summary = Object.entries(cleanDetails)
+  	.map(([key, value]) => `${key}=${typeof value === "object" ? JSON.stringify(value) : String(value)}`)
+  	.join(", ");
+  const readable = summary ? `[${level.toUpperCase()}] ${message} | ${summary}` : `[${level.toUpperCase()}] ${message}`;
+  if (level === "error") console.error(readable, cleanDetails);
+  else if (level === "warn") console.warn(readable, cleanDetails);
+  else console.log(readable, cleanDetails);
+}
+__name(logEvent, "logEvent");
 function sendWebhook(env, ctx, payload) {
-  if (!env.WEBHOOK_URL) return;
+  if (!env.WEBHOOK_URL) {
+    logEvent("warn", "Webhook delivery skipped: WEBHOOK_URL is not configured", { type: payload.type });
+    return;
+  }
+  const webhookHost = (() => {
+    try {
+      return new URL(env.WEBHOOK_URL).host;
+    } catch {
+      return "invalid URL";
+    }
+  })();
+  logEvent("info", "Sending Discord bridge webhook", {
+    type: payload.type,
+    platform: payload.platform,
+    username: payload.username,
+    changeCount: Array.isArray(payload.changes) ? payload.changes.length : undefined,
+    webhookHost
+  });
   const request = fetch(env.WEBHOOK_URL, {
     method: "POST",
     headers: {
@@ -1521,10 +1551,25 @@ function sendWebhook(env, ctx, payload) {
   }).then(async (response) => {
     if (!response.ok) {
       const text = await response.text().catch(() => "");
-      console.error(`Webhook ${payload.type} rejected with ${response.status} ${text}`);
+      logEvent("error", "Discord bridge webhook rejected", {
+        type: payload.type,
+        username: payload.username,
+        status: response.status,
+        response: text.slice(0, 500)
+      });
+    } else {
+      logEvent("info", "Discord bridge webhook delivered", {
+        type: payload.type,
+        username: payload.username,
+        status: response.status
+      });
     }
   }).catch((error) => {
-    console.error(`Webhook ${payload.type} failed: ${error instanceof Error ? error.message : String(error)}`);
+    logEvent("error", "Discord bridge webhook request failed", {
+      type: payload.type,
+      username: payload.username,
+      error: error instanceof Error ? error.message : String(error)
+    });
   });
   if (ctx && typeof ctx.waitUntil === "function") {
     ctx.waitUntil(request);
@@ -1548,14 +1593,25 @@ function queueProfileUpdateWebhook(env, ctx, uuid, previousBody, body) {
     const before = await parseJsonOrNull(previousBody);
     const after = await parseJsonOrNull(body);
     if (!after) {
-      console.error(`Profile for ${parsed.username} was not valid JSON`);
+      logEvent("error", "Profile update could not be parsed as JSON", { username: parsed.username, uuid });
       return;
     }
     if (!before) {
+      logEvent("info", "Profile baseline stored; no webhook sent for first write", { username: parsed.username, uuid });
       return;
     }
     const changes = collectProfileChanges(before, after);
-    if (changes.length === 0) return;
+    if (changes.length === 0) {
+      logEvent("info", "Profile write contained no changes; no webhook sent", { username: parsed.username, uuid });
+      return;
+    }
+    logEvent("info", "Profile changes detected", {
+      username: parsed.username,
+      uuid,
+      changeCount: changes.length,
+      paths: changes.slice(0, 20).map((change) => change.path),
+      omittedPathCount: Math.max(0, changes.length - 20)
+    });
     await sendWebhook(env, ctx, {
       type: "profile_update",
       platform: parsed.platform,
@@ -1765,6 +1821,7 @@ async function handlePost(request, env, url, path, ctx) {
     const uuid = platform + "_" + sourceUuid + "_" + (await hashUuid(sourceUuid, env.UUID_HASH));
 
     if (platform === "ps3") {
+      logEvent("info", "PS3 login detected", { username: sourceUuid, uuid });
       sendWebhook(env, ctx, {
         type: "player_login",
         platform,
@@ -1839,18 +1896,23 @@ async function handlePut(request, env, url, path, ctx) {
     const body = await request.text();
 
     if (body.length > 45e3) {
-      console.log(`Too long body sent by user ${uuid}`);
-      return new Response("", { status: 204 });
+      logEvent("warn", "Profile write rejected: body exceeds size limit", { uuid, bodyBytes: body.length, limitBytes: 45e3 });
+      return new Response(null, { status: 204 });
     }
 
     if (!body.includes('"MobileUnlock_Earth2DarkKnightAlt"')) {
-      console.log(`Uninitialized JSON sent by user ${uuid}`);
-      return new Response("", { status: 204 });
+      logEvent("warn", "Profile write rejected: uninitialized profile JSON", { uuid, bodyBytes: body.length });
+      return new Response(null, { status: 204 });
     }
     const previousBody = await env.PROFILES.get(uuid);
     await env.PROFILES.put(uuid, body);
+    logEvent("info", "Valid profile write received and saved", {
+      uuid,
+      bodyBytes: body.length,
+      hadPreviousProfile: previousBody !== null
+    });
     queueProfileUpdateWebhook(env, ctx, uuid, previousBody, body);
-    return new Response("", {
+    return new Response(null, {
       status: 204
     });
   }
