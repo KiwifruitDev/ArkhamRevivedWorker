@@ -3,7 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import worker from "../src";
 
 const BASE = "http://arkhamrevived.kiwifruitdev.com";
-const PROFILE_UUID = "ps3_Another_Hermit_e929e446-b66e-4255-8ca4-c3f0bd3711aa";
+const PROFILE_UUID = "ps3_KiwifruitDev_e929e446-b66e-4255-8ca4-c3f0bd3711aa";
 
 /** Every POST the worker makes to the bot webhook, reset before each test. */
 const webhookCalls = [];
@@ -116,21 +116,21 @@ describe("ArkhamRevivedWorker", () => {
 			new Request(`${BASE}/auth/token`, {
 				method: "POST",
 				headers: { "content-type": "application/x-www-form-urlencoded" },
-				body: ticketBody("Another_Hermit")
+				body: ticketBody("KiwifruitDev")
 			})
 		);
 
 		expect(response.status).toBe(200);
 		const token = await response.json();
 		expect(token.token_type).toBe("bearer");
-		expect(token.access_token).toMatch(/^ps3_Another_Hermit_[0-9a-f-]{36}$/);
+		expect(token.access_token).toMatch(/^ps3_KiwifruitDev_[0-9a-f-]{36}$/);
 
 		expect(webhookCalls).toHaveLength(1);
 		expect(webhookCalls[0].secret).toBe(env.WEBHOOK_SECRET);
 		expect(webhookCalls[0].body).toMatchObject({
 			type: "player_login",
 			platform: "ps3",
-			username: "Another_Hermit",
+			username: "KiwifruitDev",
 			uuid: token.access_token
 		});
 		expect(Date.parse(webhookCalls[0].body.timestamp)).not.toBeNaN();
@@ -148,11 +148,17 @@ describe("ArkhamRevivedWorker", () => {
 		expect(webhookCalls).toHaveLength(0);
 	});
 
-	it("stores the first profile write without reporting a diff", async () => {
+	it("reports every successful profile write without inventing a profile diff", async () => {
 		const response = await putProfile(profileBody({ AccountXP: 100 }));
 		expect(response.status).toBe(204);
 		expect(await env.PROFILES.get(PROFILE_UUID)).toContain('"AccountXP":100');
-		expect(webhookCalls).toHaveLength(0);
+		expect(webhookCalls).toHaveLength(1);
+		expect(webhookCalls[0].body).toMatchObject({
+			type: "profile_write",
+			platform: "ps3",
+			username: "KiwifruitDev",
+			uuid: PROFILE_UUID
+		});
 	});
 
 	it("reports a before/after diff on profile writes", async () => {
@@ -161,15 +167,20 @@ describe("ArkhamRevivedWorker", () => {
 		const response = await putProfile(profileBody({ AccountXP: 160, AccountXPLevel: 29 }));
 
 		expect(response.status).toBe(204);
-		expect(webhookCalls).toHaveLength(1);
-		expect(webhookCalls[0].secret).toBe(env.WEBHOOK_SECRET);
-		expect(webhookCalls[0].body.type).toBe("profile_update");
-		expect(webhookCalls[0].body.username).toBe("Another_Hermit");
-		expect(webhookCalls[0].body.platform).toBe("ps3");
-		expect(webhookCalls[0].body.uuid).toBe(PROFILE_UUID);
-		expect(webhookCalls[0].body.changes).toContainEqual({ path: "data.AccountXP", before: 100, after: 160 });
-		expect(webhookCalls[0].body.changes).toContainEqual({ path: "data.AccountXPLevel", before: 28, after: 29 });
-		expect(webhookCalls[0].body.changes).toHaveLength(2);
+		expect(webhookCalls).toHaveLength(2);
+		const profileWrite = webhookCalls.find((call) => call.body.type === "profile_write");
+		const profileUpdate = webhookCalls.find((call) => call.body.type === "profile_update");
+		expect(profileWrite?.secret).toBe(env.WEBHOOK_SECRET);
+		expect(profileUpdate?.secret).toBe(env.WEBHOOK_SECRET);
+		expect(profileUpdate?.body).toMatchObject({
+			type: "profile_update",
+			username: "KiwifruitDev",
+			platform: "ps3",
+			uuid: PROFILE_UUID
+		});
+		expect(profileUpdate?.body.changes).toContainEqual({ path: "data.AccountXP", before: 100, after: 160 });
+		expect(profileUpdate?.body.changes).toContainEqual({ path: "data.AccountXPLevel", before: 28, after: 29 });
+		expect(profileUpdate?.body.changes).toHaveLength(2);
 	});
 
 	it("never reports the LastModified field", async () => {
@@ -177,7 +188,8 @@ describe("ArkhamRevivedWorker", () => {
 
 		await putProfile(profileBody({ LastModified: "2030.08.08-11.00.00" }));
 
-		expect(webhookCalls).toHaveLength(0);
+		expect(webhookCalls).toHaveLength(1);
+		expect(webhookCalls[0].body.type).toBe("profile_write");
 	});
 
 	it("skips uninitialized and oversized profile writes", async () => {

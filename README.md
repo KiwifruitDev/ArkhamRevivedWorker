@@ -17,7 +17,8 @@ PS3 client ──► Worker ──► KV (PROFILES / INVENTORIES)
                  │
                  └──► POST $WEBHOOK_URL  (x-webhook-secret: $WEBHOOK_SECRET)
                           ├─ player_login    (after a successful /auth/token)
-                          └─ profile_update  (after a profile write, with a before/after diff)
+                          ├─ profile_write   (after each successful PS3 profile write)
+                          └─ profile_update (after a profile write, with a before/after diff)
 ```
 
 Webhook calls are queued with `ctx.waitUntil()`, so a slow or offline bot never delays the game.
@@ -51,7 +52,7 @@ Webhook calls are queued with `ctx.waitUntil()`, so a slow or offline bot never 
 
 | Route | Description |
 | --- | --- |
-| `/users/:id/profile/private` | Stores a profile and reports the diff to the bot. |
+| `/users/:id/profile/private` | Stores a profile, reports every successful PS3 write for KV usage tracking, and reports any profile diff. |
 
 Any other method returns `405`.
 
@@ -66,7 +67,7 @@ ps3_<PSN username>_<uuid v4 shaped HMAC-SHA256(username, UUID_HASH)>
 The PS3 ticket is decoded from the base64 `ticket` form field; the username sits at offset `0x54` and is
 read up to the first null byte. The token is repeatable, so a player keeps the same profile forever.
 
-Profile writes are diffed against the previous stored profile. The diff skips `LastModified` and the noisy
+Every successful PS3 profile write emits a `profile_write` webhook so the bot can refresh account-wide KV usage. Profile changes are also diffed against the previous stored profile. The diff skips `LastModified` and the noisy
 blocks (`CustomizationProfileData`, `RecentUnlocks`, `LoadoutData`, `WeaponScores`, `MatchmakingData`) and
 is capped at 40 fields:
 
@@ -81,8 +82,7 @@ is capped at 40 fields:
 }
 ```
 
-The first write of a profile has nothing to compare against and is not reported. Xbox and PC tokens are
-still issued for compatibility, but no activity is reported for them.
+The first write of a profile has nothing to compare against, so it only emits `profile_write` and no diff. Xbox and PC tokens are still issued for compatibility, but no profile activity or usage webhook is reported for them.
 
 ## Configuration
 

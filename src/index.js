@@ -1924,6 +1924,15 @@ async function handlePut(request, env, url, path, ctx) {
       bodyBytes: body.length,
       hadPreviousProfile: previousBody !== null
     });
+    const parsed = parseProfileUuid(uuid);
+    if (parsed.platform === "ps3" && parsed.username) {
+      sendWebhook(env, ctx, {
+        type: "profile_write",
+        platform: parsed.platform,
+        username: parsed.username,
+        uuid
+      });
+    }
     queueProfileUpdateWebhook(env, ctx, uuid, previousBody, body);
     return new Response(null, {
       status: 204
