@@ -8,7 +8,7 @@ export default defineWorkersConfig({
 				miniflare: {
 					bindings: {
 						UUID_HASH: "test-uuid-hash-secret",
-						WEBHOOK_URL: "http://localhost:4321/webhook",
+						WEBHOOK_URL: "http://localhost:4322/webhook",
 						WEBHOOK_SECRET: "test-webhook-secret"
 					}
 				}
