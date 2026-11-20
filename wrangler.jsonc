@@ -40,6 +40,10 @@
 		}
     ],
 	"vars": {
-		"WEBHOOK_URL": "http://jellyfin.kiwifruitdev.com:4322/webhook"
+		"WEBHOOK_URL": "http://jellyfin.kiwifruitdev.com:4322/webhook",
+		"EVENT_START_TIMESTAMP": "1795132800",
+		"EVENT_END_TIMESTAMP": "1795766399",
+		"EVENT_XP_MULTIPLIER": "2",
+		"EVENT_PREFIX": "[THANKSGIVING - DOUBLE XP EVENT!]"
 	}
 }

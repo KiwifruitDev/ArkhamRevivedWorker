@@ -1645,12 +1645,22 @@ async function handleGet(request, env, url, path) {
     return Response.redirect("https://kiwifruitdev.com/arkhamrevived/", 301);
   }
   if (path === "/files/netvars.dat") {
-    const content = await loadStatic(env, "netvars.ini");
+    let content = await loadStatic(env, "netvars.ini");
+    const now = Date.now();
+    if (isDoubleXpEventActive(env, now)) {
+      content = multiplyExperienceRewards(content, env.EVENT_XP_MULTIPLIER);
+    }
     const base64 = btoa(content);
     return json({ data: base64 });
   }
   if (path === "/motd") {
-    return new Response(await loadStatic(env, "motd.json"), {
+    let content = await loadStatic(env, "motd.json");
+    const now = Date.now();
+    if (isDoubleXpEventActive(env, now)) {
+      const prefix = String(env.EVENT_PREFIX || "").trim();
+      if (prefix) content = prefixMotdTitles(content, prefix);
+    }
+    return new Response(content, {
       headers: { "Content-Type": "application/json" }
     });
   }
@@ -1714,6 +1724,34 @@ async function handleGet(request, env, url, path) {
   return new Response("", { status: 404 });
 }
 __name(handleGet, "handleGet");
+function isDoubleXpEventActive(env, nowMs) {
+  const startRaw = env.EVENT_START_TIMESTAMP;
+  const endRaw = env.EVENT_END_TIMESTAMP;
+  if (startRaw == null || endRaw == null || String(startRaw).trim() === "" || String(endRaw).trim() === "") return false;
+  const start = Number(startRaw);
+  const end = Number(endRaw);
+  const now = nowMs / 1e3;
+  return Number.isFinite(start) && Number.isFinite(end) && start < end && start <= now && now < end;
+}
+__name(isDoubleXpEventActive, "isDoubleXpEventActive");
+function prefixMotdTitles(content, prefix) {
+  const document = JSON.parse(content);
+  const entries = Array.isArray(document) ? document : document?.items;
+  if (!Array.isArray(entries)) throw new Error("MOTD asset must contain an array");
+  for (const entry of entries) {
+    if (entry && typeof entry.title === "string") entry.title = `${prefix} ${entry.title}`;
+  }
+  return JSON.stringify(document, null, 4);
+}
+__name(prefixMotdTitles, "prefixMotdTitles");
+function multiplyExperienceRewards(content, multiplierValue) {
+  const multiplier = Number(multiplierValue);
+  if (!Number.isFinite(multiplier) || multiplier < 0) throw new Error("EVENT_XP_MULTIPLIER must be a non-negative number");
+  return content.replace(/^(\s*ExperienceRewards(?:\[\d+\])?\s*=\s*)(-?\d+(?:\.\d+)?)(\s*)$/gm, (_line, prefix, value, suffix) => {
+    return `${prefix}${Number(value) * multiplier}${suffix}`;
+  });
+}
+__name(multiplyExperienceRewards, "multiplyExperienceRewards");
 async function handlePost(request, env, url, path, ctx) {
   if (path === "/auth/token") {
     // all uuids go through a hash (cloudflare worker secret runtime variable named UUID_HASH)

@@ -30,8 +30,8 @@ Webhook calls are queued with `ctx.waitUntil()`, so a slow or offline bot never 
 | Route | Description |
 | --- | --- |
 | `/` | Redirects to the Arkham: Revived page. |
-| `/files/netvars.dat` | Base64 encoded `netvars.ini`. |
-| `/motd` | `public/motd.json`. |
+| `/files/netvars.dat` | Base64 encoded `netvars.ini`; the event XP multiplier is applied to downloads while the event is active. |
+| `/motd` | `public/motd.json`; the event prefix is applied to titles while the event is active. |
 | `/store/catalog/general` | `public/catalog.json`. |
 | `/store/offers` | `public/credits.json` when `vendor=4`, otherwise `public/store.json`. |
 | `/users/me` | Echoes the bearer token back as `user_id`. |
@@ -91,6 +91,10 @@ The first write of a profile has nothing to compare against, so it only emits `p
 | `UUID_HASH` | Secret used to HMAC player ids into UUIDs. Changing it invalidates every existing profile. |
 | `WEBHOOK_URL` | Full URL of the bot webhook, e.g. `https://bot.example.com/webhook`. Leave empty to disable webhooks. |
 | `WEBHOOK_SECRET` | Shared secret, sent as the `x-webhook-secret` header. Must match the bot's `WEBHOOK_SECRET`. |
+| `EVENT_PREFIX` | Prefix prepended to each MOTD title while the configured event is active. |
+| `EVENT_START_TIMESTAMP` | Event start as a Unix timestamp in seconds; inclusive. |
+| `EVENT_END_TIMESTAMP` | Event end as a Unix timestamp in seconds; exclusive. |
+| `EVENT_XP_MULTIPLIER` | Multiplier applied to each `ExperienceRewards` value in downloaded netvars during the event. |
 
 Locally these live in `.env`; in production they are Worker secrets:
 

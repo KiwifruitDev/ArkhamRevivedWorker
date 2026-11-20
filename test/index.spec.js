@@ -1,5 +1,5 @@
 import { env, createExecutionContext, waitOnExecutionContext, SELF, fetchMock } from "cloudflare:test";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import worker from "../src";
 
 const BASE = "http://arkhamrevived.kiwifruitdev.com";
@@ -8,6 +8,10 @@ const PROFILE_UUID = "ps3_KiwifruitDev_e929e446-b66e-4255-8ca4-c3f0bd3711aa";
 /** Every POST the worker makes to the bot webhook, reset before each test. */
 const webhookCalls = [];
 let webhookMockInstalled = false;
+
+afterEach(() => {
+	vi.restoreAllMocks();
+});
 
 function headerValue(headers, name) {
 	if (!headers) return undefined;
@@ -102,6 +106,36 @@ describe("ArkhamRevivedWorker", () => {
 		expect(response.headers.get("content-type")).toContain("application/json");
 		const text = await response.text();
 		expect(() => JSON.parse(text)).not.toThrow();
+	});
+
+	it("transforms the MOTD and netvars only while the event is active", async () => {
+		const start = Number(env.EVENT_START_TIMESTAMP);
+		const end = Number(env.EVENT_END_TIMESTAMP);
+		const dateNow = vi.spyOn(Date, "now");
+		dateNow.mockReturnValue((start - 1) * 1000);
+		const beforeStartMotd = await (await fetchWorker(new Request(`${BASE}/motd`))).json();
+		const beforeStartNetvars = await (await fetchWorker(new Request(`${BASE}/files/netvars.dat`))).json();
+		const originalNetvars = atob(beforeStartNetvars.data);
+
+		dateNow.mockReturnValue(start * 1000);
+		const activeMotd = await (await fetchWorker(new Request(`${BASE}/motd`))).json();
+		expect(activeMotd.items.map((entry) => entry.title)).toEqual(
+			beforeStartMotd.items.map((entry) => `${env.EVENT_PREFIX} ${entry.title}`)
+		);
+
+		const activeNetvars = await (await fetchWorker(new Request(`${BASE}/files/netvars.dat`))).json();
+		const decodedNetvars = atob(activeNetvars.data);
+		const rewardValues = (content) =>
+			[...content.matchAll(/^ExperienceRewards(?:\[\d+\])?=(-?\d+(?:\.\d+)?)$/gm)].map((match) => Number(match[1]));
+		expect(rewardValues(decodedNetvars)).toEqual(
+			rewardValues(originalNetvars).map((value) => value * Number(env.EVENT_XP_MULTIPLIER))
+		);
+
+		dateNow.mockReturnValue(end * 1000);
+		const endedMotd = await (await fetchWorker(new Request(`${BASE}/motd`))).json();
+		expect(endedMotd.items[0].title).toBe(beforeStartMotd.items[0].title);
+		const endedNetvars = await (await fetchWorker(new Request(`${BASE}/files/netvars.dat`))).json();
+		expect(atob(endedNetvars.data)).toBe(originalNetvars);
 	});
 
 	it("returns a default profile for unknown players", async () => {
